@@ -3,15 +3,15 @@
 ## Table of Contents
 - [Introduction](#introduction)
 - [Architecture](#architecture)
-- [Dataset](#dataset)
+- [Data](#data)
 - [Models Used](#models-used)
-- [Metrics](#metrics)
+- [Model Metrics](#model-metrics)
 - [Project Structure](#project-structure)
 - [How to Run](#how-to-run)
 - [Sample Output](#sample-output)
-- [Challenges Faced](#challenges-faced)
-- [Achievements](#achievements)
-- [Tech Stack](#tech-stack)
+- [Issues Faced](#issues-faced)
+- [Conclusion](#conclusion)
+- [Utilities](#utilities)
 - [References](#references)
 
 ---
@@ -20,18 +20,24 @@
 
 This project estimates a lithium-ion battery's **State of Health (SOH)**,
 **Remaining Useful Life (RUL)**, and whether it **needs replacement**, using
-only indirect behavioral signals from its charge/discharge cycling data --
-never the raw capacity readings that would make the problem trivial. It also
+only indirect behavioral signals from its charge/discharge cycling data and
+never the raw capacity readings that would make the problem trivial and introduce the issue of data leakage. It also
 includes an **anomaly detector** (flags corrupted or out-of-distribution
 cycles) and **unsupervised clustering** (groups cycles into Healthy /
 Transitional / Critical degradation stages), all wrapped in an **LLM agent**
 that answers natural-language questions about a battery's condition.
 
-The project went through two full iterations: an initial NASA PCoE
-battery-dataset version, then a rebuild on a larger 140-battery MIT/Kaggle
-fast-charging dataset once the pipeline architecture was validated. Several
-real bugs -- data leakage, a flawed RUL formula, a clustering bug -- were
-found and fixed along the way; see [Challenges Faced](#challenges-faced).
+The project went through two full iterations: an initial V1 data leakage affected version and
+then rebuilt as V2 with all the issues fixed and using indirect signals to train the models.
+Several real bugs such as data leakage, a flawed RUL formula, a clustering bug were
+found and fixed along the way.
+
+This project was made only following the motivation to learn more about ML. Even though this was the
+reason for the project, it still functions quite well and infact matches better complex models in 
+terms of performance. The most important lesson for me was using a data centric apporoach 
+in the project over a model-centric one.
+
+Something worth noting is that there was a V0 before all of this using NASA's data on kaggle instead. However the small size of the dataset especially with only 2000 rows was not enough to train the model to be accurate as this problem statement often has a lot of variation and noise which can only be fixed with more data or extremely complex algos which i had no knowledge of.
 
 ## Architecture
 
@@ -42,7 +48,7 @@ components (anomaly detection, clustering) and three supervised predictors
 (SOH, RUL, replacement), all of which feed into an LLM agent that combines
 them into one natural-language answer.
 
-## Dataset
+## Data
 
 **Source:** [Kaggle -- Lithium-Ion Battery Cycle Life Time Series Dataset](https://www.kaggle.com/datasets/solitaryseeker/lithium-ion-battery-cycle-life-time-series-dataset)
 (originally from the MIT/Stanford/Toyota fast-charging battery aging study).
@@ -50,17 +56,16 @@ them into one natural-language answer.
 - **140 batteries**, 114,598 raw cycles total
 - Multiple fast-charging protocols (single-step and two-step CC-CC-CV),
   producing genuinely different absolute charge-time/resistance scales per
-  battery -- a key reason features are ratio-normalized (see
-  [Challenges Faced](#challenges-faced))
+  battery- a key reason features are ratio-normalized.
 - Per-cycle fields: `IR` (internal resistance), `QC`/`QD` (charge/discharge
   capacity), `Tavg`/`Tmin`/`Tmax`, `chargetime`, plus per-battery protocol
   parameters `C1`/`Q1`/`C2` and the recorded `cycle_life`
-- Cycle life ranges from 148 to 2,237 cycles across the fleet -- large,
-  genuine heterogeneity, not noise
+- Cycle life ranges from 148 to 2,237 cycles across the fleet with large
+  genuine heterogeneity and not noise.
 
 ## Models Used
 
-| Component | Algorithms compared | Winner |
+| Component | Algorithms compared | Best |
 |---|---|---|
 | SOH regressor | Linear Regression, Random Forest, Gradient Boosting | Gradient Boosting |
 | RUL regressor | Linear Regression, Random Forest, Gradient Boosting | Gradient Boosting |
@@ -68,10 +73,11 @@ them into one natural-language answer.
 | Anomaly detector | Isolation Forest + hard ratio-threshold rule | -- |
 | Clustering | K-means (k selected via elbow + silhouette) | k=3 |
 
-SVM/SVR were deliberately excluded -- too slow at this row count (114k+
-rows x 5-fold GroupKFold) for the marginal benefit seen during development.
+SVM/SVR were deliberately excluded as they were too slow at this row count (114k+
+rows x 5-fold GroupKFold) for the marginal benefit seen during my prior development with the mentioned V0
+in introduction.
 
-## Metrics
+##Model Metrics
 
 ![Results summary](outputs/results_summary.png)
 
@@ -98,14 +104,14 @@ V2/
     models.py     -- trains/evaluates all 5 components, agent-facing predict functions
     pipeline.py   -- integration layer: battery baseline + run_battery_pipeline()
   models/          -- saved .pkl model bundles (scaler + model + feature list)
+V1/               --Initial version that had data leakge. Included to show the issue
 agent/
-  agent.py         -- Claude-backed natural-language agent
-  agent_gemini.py  -- Gemini-backed equivalent
+  agent.py         -- Gemini-backed natural-language agent
 data/
   raw/             -- source CSV
-  processed/       -- engineered feature table
+  processed/       -- engineered feature table for V1 and V2
 notebooks/         -- 01-06, EDA through full pipeline integration
-assets/            -- architecture diagram, results chart
+outputs/            -- architecture diagram, results chart
 ```
 
 ## How to Run
@@ -158,28 +164,28 @@ It's important to note that while the degradation stage is 'Critical,' the repla
 Executed.
 ```
 
-## Challenges Faced
+## Issues Faced
 
 - **Data leakage in an early version of the pipeline.** `target_soh` was
   defined as exactly `QD / Nominal_QD_Cap`, and both `QD` and
-  `Nominal_QD_Cap` were then fed back in as model features -- the model was
+  `Nominal_QD_Cap` were then fed back in as model features which means the model was
   reconstructing its own answer, not learning degradation. Reported
   R2=99.95%; the real, leak-free number is 0.893. Even after removing the
   obvious leaks, engineered columns like `thermal_efficiency_index =
   QD/Tavg` still smuggled in raw capacity and had to be dropped too.
 - **A flawed RUL formula.** The original approach computed RUL as
   `(soh - 0.80) / average_degradation_rate_since_cycle_1`. Near-zero early
-  fade rate causes this to explode -- 5,932 rows had to be hard-capped at a
+  fade rate causes this to explode which meant 5,932 rows had to be hard-capped at a
   sentinel value of 15000. Worse, the formula misbehaves on any realistic
   fast-then-slow fade curve (not just the fresh-battery edge case), because
-  it uses an *average* rate rather than a local one -- verified it can
+  it uses an *average* rate rather than a local one and verified it can
   produce RUL that *increases* over time on a synthetic but physically
   realistic degradation curve. Replaced with a direct `cycle_life - cycle`
   calculation.
 - **A clustering bug caused by protocol-dominated features.** An early
   version clustered on the full feature set (including protocol parameters
   and temperature) and produced three clusters with nearly identical mean
-  SOH (0.966/0.961/0.960) -- it was grouping by *charging protocol*, not
+  SOH (0.966/0.961/0.960) as it was grouping by *charging protocol*, not
   degradation stage, since every protocol group spans all health levels.
   Fixed by restricting clustering to only `IR_ratio`/`chargetime_ratio`.
 - **A handful of sensor glitches distorted k-selection entirely.** 14 rows
@@ -195,15 +201,15 @@ Executed.
   known-glitch catch rate from 78.6% to 100%.
 - **Cross-environment path/dependency mismatches** when moving the
   pipeline from a development sandbox to a real local project structure
-  (different folder layout, renamed files, Windows paths) -- required
+  (different folder layout, renamed files, Windows paths) that required
   explicit fixes to import paths and data/model file locations.
 
-## Achievements
+## Conclusion
 
 - Full 5-component pipeline (SOH, RUL, replacement, anomaly detection,
   clustering) trained, validated, and reproducible from raw data to saved
   models.
-- Two working LLM agent integrations (Claude and Gemini) that correctly
+- A working LLM agent integration in the form of Gemini that correctly
   reason about anomaly caveats and explain apparent disagreements between
   components rather than just reporting raw numbers.
 - Six documentation notebooks covering the full pipeline, each with
@@ -212,13 +218,12 @@ Executed.
   real held-out battery testing, and a properly isolated leakage
   investigation that avoided a false "detector is broken" conclusion.
 
-## Tech Stack
+## Utilities
 
 - **Data/ML:** Python, pandas, NumPy, scikit-learn, joblib
 - **Models:** Linear/Logistic Regression, Random Forest, Gradient Boosting,
   Isolation Forest, K-means
-- **Agent layer:** Anthropic Claude API (`anthropic`), Google Gemini API
-  (`google-genai`)
+- **Agent layer:** Google Gemini API (`google-genai`)
 - **Visualization:** matplotlib
 - **Notebooks:** Jupyter (`.ipynb`)
 
