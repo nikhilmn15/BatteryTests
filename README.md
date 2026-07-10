@@ -77,7 +77,7 @@ SVM/SVR were deliberately excluded as they were too slow at this row count (114k
 rows x 5-fold GroupKFold) for the marginal benefit seen during my prior development with the mentioned V0
 in introduction.
 
-##Model Metrics
+## Model Metrics
 
 ![Results summary](outputs/results_summary.png)
 
