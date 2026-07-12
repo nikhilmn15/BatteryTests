@@ -10,6 +10,7 @@
 - [How to Run](#how-to-run)
 - [Sample Output](#sample-output)
 - [Issues Faced](#issues-faced)
+- [Experiments](#experiments)
 - [Conclusion](#conclusion)
 - [Utilities](#utilities)
 - [References](#references)
@@ -166,14 +167,14 @@ Executed.
 
 ## Issues Faced
 
-- **Data leakage in an early version of the pipeline.** `target_soh` was
+- **Data leakage in an early version of the pipeline**: `target_soh` was
   defined as exactly `QD / Nominal_QD_Cap`, and both `QD` and
   `Nominal_QD_Cap` were then fed back in as model features which means the model was
   reconstructing its own answer, not learning degradation. Reported
   R2=99.95%; the real, leak-free number is 0.893. Even after removing the
   obvious leaks, engineered columns like `thermal_efficiency_index =
   QD/Tavg` still smuggled in raw capacity and had to be dropped too.
-- **A flawed RUL formula.** The original approach computed RUL as
+- **A flawed RUL formula**: The original approach computed RUL as
   `(soh - 0.80) / average_degradation_rate_since_cycle_1`. Near-zero early
   fade rate causes this to explode which meant 5,932 rows had to be hard-capped at a
   sentinel value of 15000. Worse, the formula misbehaves on any realistic
@@ -182,27 +183,37 @@ Executed.
   produce RUL that *increases* over time on a synthetic but physically
   realistic degradation curve. Replaced with a direct `cycle_life - cycle`
   calculation.
-- **A clustering bug caused by protocol-dominated features.** An early
+- **A clustering bug caused by protocol-dominated features**: An early
   version clustered on the full feature set (including protocol parameters
   and temperature) and produced three clusters with nearly identical mean
   SOH (0.966/0.961/0.960) as it was grouping by *charging protocol*, not
   degradation stage, since every protocol group spans all health levels.
   Fixed by restricting clustering to only `IR_ratio`/`chargetime_ratio`.
-- **A handful of sensor glitches distorted k-selection entirely.** 14 rows
+- **A handful of sensor glitches distorted k-selection entirely**: 14 rows
   with `chargetime` readings 49-96x their real baseline created a
   trivially-separable "glitch vs everyone" cluster that hijacked the
   silhouette-score-based choice of k. Filtering these out first (via a
   dedicated `is_ratio_anomaly` flag) revealed the real, meaningful 3-stage
   structure underneath.
-- **The anomaly detector initially performed worse than random.** Raw
+- **The anomaly detector initially performed worse than random**: Raw
   `IR`/`chargetime`/protocol features caused Isolation Forest to flag rare
   protocol combinations more often than actual behavioral anomalies.
   Switching to the same ratio-normalized features used elsewhere raised the
   known-glitch catch rate from 78.6% to 100%.
-- **Cross-environment path/dependency mismatches** when moving the
+- **Cross-environment path/dependency mismatches**: When moving the
   pipeline from a development sandbox to a real local project structure
   (different folder layout, renamed files, Windows paths) that required
   explicit fixes to import paths and data/model file locations.
+
+## Experiments
+- **LSTM Neural Networks vs GB Trees**: In V0 there was a confusion to choose either
+  LSTM or GB Trees. The LLM I was using to learn mentioned GBT worked better at my data size
+  of 2000 rows and LSTM would be beneficial for larger ones. Eventually after shifting to the large MIT
+  dataset I tried it out yielding the following result:
+  ![Performance](outputs/nn_vs_gbt.png)
+  This shows that both models would work perfectly fine on this dataset. Another conclusion is that the
+  features we chose were very well as if not the gap between the models wouldve been large
+  with LSTM being better due to it recognizing intricate features from raw data
 
 ## Conclusion
 
