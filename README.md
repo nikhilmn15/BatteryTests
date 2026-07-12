@@ -211,6 +211,7 @@ Executed.
   of 2000 rows and LSTM would be beneficial for larger ones. Eventually after shifting to the large MIT
   dataset I tried it out yielding the following result:
   ![Performance](outputs/nn_vs_gbt.png)
+
   This shows that both models would work perfectly fine on this dataset. Another conclusion is that the
   features we chose were very well as if not the gap between the models wouldve been large
   with LSTM being better due to it recognizing intricate features from raw data
@@ -232,6 +233,7 @@ Executed.
 ## Utilities
 
 - **Data/ML:** Python, pandas, NumPy, scikit-learn, joblib
+- **Learning:** Claude for discussion and boilerplate code 
 - **Models:** Linear/Logistic Regression, Random Forest, Gradient Boosting,
   Isolation Forest, K-means
 - **Agent layer:** Google Gemini API (`google-genai`)
